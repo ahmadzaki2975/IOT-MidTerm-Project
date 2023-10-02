@@ -3,5 +3,4 @@ sdkconfig
 sdkconfig.old
 .vscode
 .devcontainer
-managed_components
 ```
