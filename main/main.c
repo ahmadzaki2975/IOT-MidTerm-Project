@@ -9,16 +9,20 @@
 #include <esp_err.h>
 
 // ? Konfigurasi OLED
-#define I2C_MASTER_SCL_IO 22       /*!< gpio number for I2C master clock */
-#define I2C_MASTER_SDA_IO 21        /*!< gpio number for I2C master data  */
-#define I2C_MASTER_NUM I2C_NUM_1    /*!< I2C port number for master dev */
-#define I2C_MASTER_FREQ_HZ 100000   /*!< I2C master clock frequency */
+#define I2C_MASTER_SCL_IO 22      /*!< gpio number for I2C master clock */
+#define I2C_MASTER_SDA_IO 21      /*!< gpio number for I2C master data  */
+#define I2C_MASTER_NUM I2C_NUM_1  /*!< I2C port number for master dev */
+#define I2C_MASTER_FREQ_HZ 100000 /*!< I2C master clock frequency */
 static ssd1306_handle_t ssd1306_dev = NULL;
 
 // ? Konfigurasi Ultrasonic Sensor
 #define MAX_DISTANCE_CM 500 // 5m max
 #define TRIGGER_GPIO 5
 #define ECHO_GPIO 18
+
+// ? Definisi Queue
+QueueHandle_t dhtQueue;
+QueueHandle_t ultrasonicQueue;
 
 // ? Task untuk Membaca Sensor DHT11
 void DHT_Task()
@@ -38,16 +42,19 @@ void OLED_Task()
 {
   while (1)
   {
-    char data_str[10] = {0};
-    sprintf(data_str, "C STR");
-    ssd1306_draw_string(ssd1306_dev, 70, 16, (const uint8_t *)data_str, 16, 1);
-    ssd1306_refresh_gram(ssd1306_dev);
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    uint32_t distance;
+    ssd1306_clear_screen(ssd1306_dev, 0x00);
+    if(xQueueReceive(ultrasonicQueue, &distance, 0) == pdTRUE){
+      char data_str[10] = {0};
+      sprintf(data_str, "%ld cm", distance);
+      ssd1306_draw_string(ssd1306_dev, 0, 0, (const uint8_t *)data_str, 16, 1);
+      ssd1306_refresh_gram(ssd1306_dev);
+    }
   }
 }
 
 // ? Task untuk Membaca Sensor Ultrasonic
-void Ultrasonic_Task() 
+void Ultrasonic_Task()
 {
   ultrasonic_sensor_t sensor = {
       .trigger_pin = TRIGGER_GPIO,
@@ -79,6 +86,7 @@ void Ultrasonic_Task()
     else
     {
       printf("Distance: %ld cm, %.02f m\n", distance, distance / 100.0);
+      xQueueSend(ultrasonicQueue, &distance, 0);
     }
     vTaskDelay(1000 / portTICK_PERIOD_MS);
   }
@@ -109,13 +117,17 @@ void app_main(void)
   ssd1306_draw_string(ssd1306_dev, 0, 0, (const uint8_t *)data_str, 16, 1);
   ssd1306_refresh_gram(ssd1306_dev);
 
+  // ? Inisialisasi Queue
+  dhtQueue = xQueueCreate(10, sizeof(double));
+  ultrasonicQueue = xQueueCreate(10, sizeof(uint32_t));
+
   // ? Inisialisasi pin GPIO 32 untuk sensor DHT11
   DHT11_init(GPIO_NUM_32);
 
   // ? Membuat task untuk membaca sensor DHT11
   xTaskCreate(&DHT_Task, "DHT_Task", 2048, NULL, 5, NULL);
   // ? Membuat task untuk display OLED
-  // xTaskCreate(&OLED_Task, "OLED_Task", 2048, NULL, 5, NULL);
+  xTaskCreate(&OLED_Task, "OLED_Task", 2048, NULL, 5, NULL);
   // ? Membuat task untuk membaca sensor Ultrasonic
   xTaskCreate(&Ultrasonic_Task, "Ultrasonic_Task", 2048, NULL, 5, NULL);
 }
