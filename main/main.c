@@ -24,30 +24,54 @@ static ssd1306_handle_t ssd1306_dev = NULL;
 QueueHandle_t dhtQueue;
 QueueHandle_t ultrasonicQueue;
 
+// ? Definisi Struct
+typedef struct
+{
+  int temperature;
+  int humidity;
+} DHTdata;
+
 // ? Task untuk Membaca Sensor DHT11
 void DHT_Task()
 {
+  DHTdata data;
   while (1)
   {
-    double temp = DHT11_read().temperature;
-    double hum = DHT11_read().humidity;
-    printf("Temperature: %f\n", temp);
-    printf("Humidity: %f\n", hum);
+    // ? Read data dari sensor DHT
+    data.temperature = DHT11_read().temperature;
+    data.humidity = DHT11_read().humidity;
+    printf("Temperature: %i\n", data.temperature);
+    printf("Humidity: %i\n", data.humidity);
     vTaskDelay(1000 / portTICK_PERIOD_MS);
+    // ? Mengirim queue berisi data
+    xQueueSend(dhtQueue, &data, 0);
   }
 }
 
 // ? Task untuk Menampilkan Data Sensor ke OLED
 void OLED_Task()
 {
+  uint32_t distance;
+  DHTdata data_received;
   while (1)
   {
-    uint32_t distance;
-    ssd1306_clear_screen(ssd1306_dev, 0x00);
-    if(xQueueReceive(ultrasonicQueue, &distance, 0) == pdTRUE){
-      char data_str[10] = {0};
-      sprintf(data_str, "%ld cm", distance);
-      ssd1306_draw_string(ssd1306_dev, 0, 0, (const uint8_t *)data_str, 16, 1);
+    if (
+        xQueueReceive(dhtQueue, &data_received, pdMS_TO_TICKS(100)) == pdPASS ||
+        xQueueReceive(ultrasonicQueue, &distance, pdMS_TO_TICKS(100)) == pdPASS)
+    {
+      ssd1306_clear_screen(ssd1306_dev, 0x00);
+      char temp_str[16];
+      char hum_str[16];
+      char dist_str[16];
+
+      sprintf(temp_str, "%i C", data_received.temperature);
+      sprintf(hum_str, "%i %%", data_received.humidity);
+      sprintf(dist_str, "%ld cm", distance);
+
+      ssd1306_draw_string(ssd1306_dev, 0, 0, (const uint8_t *)dist_str, 16, 1);
+      ssd1306_draw_string(ssd1306_dev, 0, 16, (const uint8_t *)temp_str, 16, 1);
+      ssd1306_draw_string(ssd1306_dev, 0, 32, (const uint8_t *)hum_str, 16, 1);
+
       ssd1306_refresh_gram(ssd1306_dev);
     }
   }
@@ -85,7 +109,8 @@ void Ultrasonic_Task()
     }
     else
     {
-      printf("Distance: %ld cm, %.02f m\n", distance, distance / 100.0);
+      printf("Distance: %ld cm\n", distance);
+      // ? Mengirim data dari sensor ultrasonic ke queue
       xQueueSend(ultrasonicQueue, &distance, 0);
     }
     vTaskDelay(1000 / portTICK_PERIOD_MS);
@@ -118,7 +143,7 @@ void app_main(void)
   ssd1306_refresh_gram(ssd1306_dev);
 
   // ? Inisialisasi Queue
-  dhtQueue = xQueueCreate(10, sizeof(double));
+  dhtQueue = xQueueCreate(10, sizeof(char[10]));
   ultrasonicQueue = xQueueCreate(10, sizeof(uint32_t));
 
   // ? Inisialisasi pin GPIO 32 untuk sensor DHT11
