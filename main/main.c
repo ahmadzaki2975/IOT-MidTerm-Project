@@ -9,14 +9,14 @@
 #include <esp_err.h>
 
 // ? Konfigurasi OLED
-#define I2C_MASTER_SCL_IO 22      /*!< gpio number for I2C master clock */
-#define I2C_MASTER_SDA_IO 21      /*!< gpio number for I2C master data  */
-#define I2C_MASTER_NUM I2C_NUM_1  /*!< I2C port number for master dev */
-#define I2C_MASTER_FREQ_HZ 100000 /*!< I2C master clock frequency */
+#define I2C_MASTER_SCL_IO 22      // ? GPIO untuk I2C master clock 
+#define I2C_MASTER_SDA_IO 21      // ? GPIO untuk I2C master data  */
+#define I2C_MASTER_NUM I2C_NUM_1  // ? I2C port untuk master dev */
+#define I2C_MASTER_FREQ_HZ 100000 // ? I2C master clock frequency */
 static ssd1306_handle_t ssd1306_dev = NULL;
 
 // ? Konfigurasi Ultrasonic Sensor
-#define MAX_DISTANCE_CM 500 // 5m max
+#define MAX_DISTANCE_CM 500 // ? max 500cm 
 #define TRIGGER_GPIO 5
 #define ECHO_GPIO 18
 
@@ -40,8 +40,6 @@ void DHT_Task()
     // ? Read data dari sensor DHT
     data.temperature = DHT11_read().temperature;
     data.humidity = DHT11_read().humidity;
-    printf("Temperature: %i\n", data.temperature);
-    printf("Humidity: %i\n", data.humidity);
     vTaskDelay(1000 / portTICK_PERIOD_MS);
     // ? Mengirim queue berisi data
     xQueueSend(dhtQueue, &data, 0);
@@ -55,6 +53,7 @@ void OLED_Task()
   DHTdata data_received;
   while (1)
   {
+    // ? Update display jika menerima data baru dari queue
     if (
         xQueueReceive(dhtQueue, &data_received, pdMS_TO_TICKS(100)) == pdPASS ||
         xQueueReceive(ultrasonicQueue, &distance, pdMS_TO_TICKS(100)) == pdPASS)
