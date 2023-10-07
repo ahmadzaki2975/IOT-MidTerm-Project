@@ -69,6 +69,11 @@ void setServoAngle(int target_angle)
   ledc_fade_start(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_2, LEDC_FADE_WAIT_DONE);
 }
 
+// ? Konfigurasi Push Button
+#define BUTTON_GPIO GPIO_NUM_23
+bool button_state = false;
+SemaphoreHandle_t button_mutex;
+
 // ? Definisi Queue
 QueueHandle_t dhtQueue;
 QueueHandle_t ultrasonicQueue;
@@ -227,18 +232,49 @@ void Servo_Task()
   configureServo();
   while (1)
   {
-    setServoAngle(ACTIVE_ANGLE);
-    vTaskDelay(pdMS_TO_TICKS(2000));
-    setServoAngle(REST_ANGLE);
-    vTaskDelay(pdMS_TO_TICKS(2000));
+    if(xSemaphoreTake(button_mutex, portMAX_DELAY) == pdTRUE)
+    {
+      if (button_state)
+      {
+        setServoAngle(ACTIVE_ANGLE);
+      }
+      else
+      {
+        setServoAngle(REST_ANGLE);
+      }
+      xSemaphoreGive(button_mutex);
+    }
+    vTaskDelay(200 / portTICK_PERIOD_MS);
   }
 }
 
 // ? Task untuk Membaca Push Button
 void PushButton_Task()
 {
+  TickType_t last_button_press_time = 0; // Initialize the time of the last button press
   while (1)
   {
+    if (gpio_get_level(BUTTON_GPIO) == 0)
+    {
+      // Calculate the time since the last button press
+      TickType_t current_time = xTaskGetTickCount();
+      TickType_t time_since_last_press = current_time - last_button_press_time;
+      // Check if it's been more than a debouncing delay (e.g., 200ms)
+      if (time_since_last_press >= pdMS_TO_TICKS(500))
+      {
+        if (xSemaphoreTake(button_mutex, 0) == pdTRUE)
+        {
+          // Button is pressed, toggle the button state
+          button_state = !button_state;
+          xSemaphoreGive(button_mutex);
+          #if DEBUG_FLAG
+          printf("Button state: %d\n", button_state);
+          #endif
+          // Update the time of the last button press
+          last_button_press_time = current_time;
+        }
+      }
+    }
     vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
@@ -270,6 +306,9 @@ void app_main(void)
   ultrasonicQueue = xQueueCreate(10, sizeof(uint32_t));
   jsonQueue = xQueueCreate(10, sizeof(char[100]));
 
+  // ? Inisialisasi Mutex
+  button_mutex = xSemaphoreCreateMutex();
+
   // ? Inisialisasi pin GPIO 32 untuk sensor DHT11
   DHT11_init(GPIO_NUM_32);
 
@@ -284,6 +323,18 @@ void app_main(void)
   uart_set_pin(UART_NUM_2, TX_PIN, RX_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
   uart_driver_install(UART_NUM_2, 1024, 0, 0, NULL, 0);
 
+  // ? Inisialisasi pin GPIO 23 untuk push button
+  gpio_config_t button_config = {
+      .pin_bit_mask = (1ULL << BUTTON_GPIO),
+      .mode = GPIO_MODE_INPUT,
+      .pull_up_en = GPIO_PULLUP_ENABLE, // Enable the pull-up resistor
+      .pull_down_en = GPIO_PULLDOWN_DISABLE,
+      .intr_type = GPIO_INTR_DISABLE // You can enable interrupts if needed
+  };
+  gpio_config(&button_config);
+
+  // ! Delay menunggu sensor stabil
+  vTaskDelay(2000 / portTICK_PERIOD_MS);
   // ? Membuat task untuk membaca sensor DHT11
   xTaskCreate(&DHT_Task, "DHT_Task", 2048, NULL, 5, NULL);
   // ? Membuat task untuk display OLED
@@ -292,4 +343,6 @@ void app_main(void)
   xTaskCreate(&Ultrasonic_Task, "Ultrasonic_Task", 2048, NULL, 5, NULL);
   // ? Membuat task untuk menggerakkan servo
   xTaskCreate(&Servo_Task, "Servo_Task", 2048, NULL, 5, NULL);
+  // ? Membuat task untuk membaca push button
+  xTaskCreate(&PushButton_Task, "PushButton_Task", 2048, NULL, 5, NULL);
 }
