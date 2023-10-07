@@ -8,6 +8,9 @@
 #include <ultrasonic.h>
 #include <esp_err.h>
 #include "driver/uart.h"
+#include "driver/ledc.h"
+#include "sdkconfig.h"
+#include "esp_log.h"
 
 // ? Definisi Debug Flag
 #define DEBUG_FLAG false
@@ -28,6 +31,43 @@ static ssd1306_handle_t ssd1306_dev = NULL;
 #define MAX_DISTANCE_CM 500 // ? max 500cm
 #define TRIGGER_GPIO 5
 #define ECHO_GPIO 18
+
+// ? Konfigurasi Servo
+#define SERVO_GPIO GPIO_NUM_12
+#define SERVO_MIN_DUTY 900        // micro seconds (uS), for 0
+#define SERVO_MAX_DUTY 3800       // micro seconds (uS),for 180
+#define SERVO_TRANSITION_TIME 500 // in ms
+#define ACTIVE_ANGLE 180
+#define REST_ANGLE 0
+
+int servo_duty = SERVO_MIN_DUTY;
+int servo_delta = SERVO_MAX_DUTY - SERVO_MIN_DUTY;
+
+void configureServo()
+{
+  ledc_timer_config_t timer_conf;
+  timer_conf.duty_resolution = LEDC_TIMER_15_BIT;
+  timer_conf.freq_hz = 50;
+  timer_conf.speed_mode = LEDC_HIGH_SPEED_MODE;
+  timer_conf.timer_num = LEDC_TIMER_2;
+  ledc_timer_config(&timer_conf);
+
+  ledc_channel_config_t ledc_conf;
+  ledc_conf.channel = LEDC_CHANNEL_2;
+  ledc_conf.duty = servo_duty;
+  ledc_conf.gpio_num = SERVO_GPIO;
+  ledc_conf.intr_type = LEDC_INTR_DISABLE;
+  ledc_conf.speed_mode = LEDC_HIGH_SPEED_MODE;
+  ledc_conf.timer_sel = LEDC_TIMER_2;
+  ledc_channel_config(&ledc_conf);
+  ledc_fade_func_install(0);
+}
+
+void setServoAngle(int target_angle)
+{
+  ledc_set_fade_with_time(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_2, (uint16_t)(servo_duty + (servo_delta * (target_angle / 180.0))), SERVO_TRANSITION_TIME);
+  ledc_fade_start(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_2, LEDC_FADE_WAIT_DONE);
+}
 
 // ? Definisi Queue
 QueueHandle_t dhtQueue;
@@ -147,9 +187,9 @@ void Display_Task()
               data_received.temperature,
               data_received.humidity,
               distance);
-      #if DEBUG_JSON
+#if DEBUG_JSON
       printf("%s\n", json_str);
-      #endif
+#endif
       // ? Mengirim data ke UART
       uart_write_bytes(UART_NUM_2, json_str, sizeof(json_str));
     }
@@ -171,13 +211,35 @@ void UART_Task()
               data_received.temperature,
               data_received.humidity,
               data_received.distance);
-      #if DEBUG_JSON
+#if DEBUG_JSON
       printf("%s\n", json_str);
-      #endif
+#endif
       // ? Mengirim data ke UART
       uart_write_bytes(TX_PIN, json_str, sizeof(json_str));
     }
     vTaskDelay(1000 / portTICK_PERIOD_MS);
+  }
+}
+
+// ? Task untuk Menggerakkan Servo
+void Servo_Task()
+{
+  configureServo();
+  while (1)
+  {
+    setServoAngle(ACTIVE_ANGLE);
+    vTaskDelay(pdMS_TO_TICKS(2000));
+    setServoAngle(REST_ANGLE);
+    vTaskDelay(pdMS_TO_TICKS(2000));
+  }
+}
+
+// ? Task untuk Membaca Push Button
+void PushButton_Task()
+{
+  while (1)
+  {
+    vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
 
@@ -228,4 +290,6 @@ void app_main(void)
   xTaskCreate(&Display_Task, "Display_Task", 2048, NULL, 5, NULL);
   // ? Membuat task untuk membaca sensor Ultrasonic
   xTaskCreate(&Ultrasonic_Task, "Ultrasonic_Task", 2048, NULL, 5, NULL);
+  // ? Membuat task untuk menggerakkan servo
+  xTaskCreate(&Servo_Task, "Servo_Task", 2048, NULL, 5, NULL);
 }
