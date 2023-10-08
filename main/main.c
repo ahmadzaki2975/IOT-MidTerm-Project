@@ -28,21 +28,22 @@
 static ssd1306_handle_t ssd1306_dev = NULL;
 
 // ? Konfigurasi Ultrasonic Sensor
-#define MAX_DISTANCE_CM 500 // ? max 500cm
+#define MAX_DISTANCE_CM 500       // ? max 500cm
 #define TRIGGER_GPIO 5
 #define ECHO_GPIO 18
 
 // ? Konfigurasi Servo
 #define SERVO_GPIO GPIO_NUM_12
-#define SERVO_MIN_DUTY 900        // micro seconds (uS), for 0
-#define SERVO_MAX_DUTY 3800       // micro seconds (uS),for 180
-#define SERVO_TRANSITION_TIME 500 // in ms
+#define SERVO_MIN_DUTY 900        // ? micro seconds (uS), untuk 0
+#define SERVO_MAX_DUTY 3800       // ? micro seconds (uS), untuk 180
+#define SERVO_TRANSITION_TIME 500 // ? 500 ms transisi servo
 #define ACTIVE_ANGLE 180
 #define REST_ANGLE 0
 
 int servo_duty = SERVO_MIN_DUTY;
 int servo_delta = SERVO_MAX_DUTY - SERVO_MIN_DUTY;
 
+// ? Fungsi untuk mengkonfigurasi servo
 void configureServo()
 {
   ledc_timer_config_t timer_conf;
@@ -63,6 +64,7 @@ void configureServo()
   ledc_fade_func_install(0);
 }
 
+// ? Fungsi untuk menggerakkan servo ke sudut tertentu
 void setServoAngle(int target_angle)
 {
   ledc_set_fade_with_time(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_2, (uint16_t)(servo_duty + (servo_delta * (target_angle / 180.0))), SERVO_TRANSITION_TIME);
@@ -216,9 +218,9 @@ void UART_Task()
               data_received.temperature,
               data_received.humidity,
               data_received.distance);
-#if DEBUG_JSON
+      #if DEBUG_JSON
       printf("%s\n", json_str);
-#endif
+      #endif
       // ? Mengirim data ke UART
       uart_write_bytes(TX_PIN, json_str, sizeof(json_str));
     }
@@ -232,8 +234,10 @@ void Servo_Task()
   configureServo();
   while (1)
   {
+    // ? Mencoba mengambil mutex
     if(xSemaphoreTake(button_mutex, portMAX_DELAY) == pdTRUE)
     {
+      // ? Menggerakkan servo sesuai dengan state button
       if (button_state)
       {
         setServoAngle(ACTIVE_ANGLE);
@@ -242,6 +246,7 @@ void Servo_Task()
       {
         setServoAngle(REST_ANGLE);
       }
+      // ? Melepaskan mutex
       xSemaphoreGive(button_mutex);
     }
     vTaskDelay(200 / portTICK_PERIOD_MS);
@@ -256,21 +261,21 @@ void PushButton_Task()
   {
     if (gpio_get_level(BUTTON_GPIO) == 0)
     {
-      // Calculate the time since the last button press
+      // ? Menghitung waktu sejak button ditekan
       TickType_t current_time = xTaskGetTickCount();
       TickType_t time_since_last_press = current_time - last_button_press_time;
-      // Check if it's been more than a debouncing delay (e.g., 200ms)
+      // ? Debouncing button dengan delay 500 ms
       if (time_since_last_press >= pdMS_TO_TICKS(500))
       {
         if (xSemaphoreTake(button_mutex, 0) == pdTRUE)
         {
-          // Button is pressed, toggle the button state
+          // ? Button state akan berubah jika button ditekan
           button_state = !button_state;
           xSemaphoreGive(button_mutex);
           #if DEBUG_FLAG
           printf("Button state: %d\n", button_state);
           #endif
-          // Update the time of the last button press
+          // ? Update waktu terakhir button ditekan
           last_button_press_time = current_time;
         }
       }
@@ -327,14 +332,12 @@ void app_main(void)
   gpio_config_t button_config = {
       .pin_bit_mask = (1ULL << BUTTON_GPIO),
       .mode = GPIO_MODE_INPUT,
-      .pull_up_en = GPIO_PULLUP_ENABLE, // Enable the pull-up resistor
+      .pull_up_en = GPIO_PULLUP_ENABLE,     // ? Menyalakan internal pull up resistor
       .pull_down_en = GPIO_PULLDOWN_DISABLE,
-      .intr_type = GPIO_INTR_DISABLE // You can enable interrupts if needed
+      .intr_type = GPIO_INTR_DISABLE
   };
   gpio_config(&button_config);
 
-  // ! Delay menunggu sensor stabil
-  vTaskDelay(2000 / portTICK_PERIOD_MS);
   // ? Membuat task untuk membaca sensor DHT11
   xTaskCreate(&DHT_Task, "DHT_Task", 2048, NULL, 5, NULL);
   // ? Membuat task untuk display OLED
