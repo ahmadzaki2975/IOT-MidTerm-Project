@@ -203,31 +203,6 @@ void Display_Task()
   }
 }
 
-// ? Task untuk Mengirim data ke UART
-void UART_Task()
-{
-  JSONdata data_received;
-  while (1)
-  {
-    char json_str[100];
-    // ? Menerima data dari queue
-    if (xQueueReceive(jsonQueue, &data_received, pdMS_TO_TICKS(100)) == pdPASS)
-    {
-      sprintf(json_str,
-              "{ \"temperature:\" %i, \"humidity:\" %i, \"distance:\" %ld }",
-              data_received.temperature,
-              data_received.humidity,
-              data_received.distance);
-      #if DEBUG_JSON
-      printf("%s\n", json_str);
-      #endif
-      // ? Mengirim data ke UART
-      uart_write_bytes(TX_PIN, json_str, sizeof(json_str));
-    }
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
-  }
-}
-
 // ? Task untuk Menggerakkan Servo
 void Servo_Task()
 {
@@ -340,7 +315,7 @@ void app_main(void)
 
   // ? Membuat task untuk membaca sensor DHT11
   xTaskCreate(&DHT_Task, "DHT_Task", 2048, NULL, 5, NULL);
-  // ? Membuat task untuk display OLED
+  // ? Membuat task untuk display OLED dan UART
   xTaskCreate(&Display_Task, "Display_Task", 2048, NULL, 5, NULL);
   // ? Membuat task untuk membaca sensor Ultrasonic
   xTaskCreate(&Ultrasonic_Task, "Ultrasonic_Task", 2048, NULL, 5, NULL);
