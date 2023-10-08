@@ -13,7 +13,6 @@
 #include "esp_log.h"
 
 // ? Definisi Debug Flag
-#define DEBUG_FLAG false
 #define DEBUG_JSON true
 
 // ? Konfigurasi UART
@@ -28,7 +27,7 @@
 static ssd1306_handle_t ssd1306_dev = NULL;
 
 // ? Konfigurasi Ultrasonic Sensor
-#define MAX_DISTANCE_CM 500       // ? max 500cm
+#define MAX_DISTANCE_CM 500 // ? max 500cm
 #define TRIGGER_GPIO 5
 #define ECHO_GPIO 18
 
@@ -104,6 +103,7 @@ void DHT_Task()
     // ? Read data dari sensor DHT
     data.temperature = DHT11_read().temperature;
     data.humidity = DHT11_read().humidity;
+    if(data.temperature < 1 || data.humidity < 1) continue;
     vTaskDelay(1000 / portTICK_PERIOD_MS);
     // ? Mengirim queue berisi data
     xQueueSend(dhtQueue, &data, 0);
@@ -156,6 +156,8 @@ void Ultrasonic_Task()
       printf("Distance: %ld cm\n", distance);
 #endif
       // ? Mengirim data dari sensor ultrasonic ke queue
+      if (distance < 1) distance = 1;
+      if (distance > 500) distance = 500;
       xQueueSend(ultrasonicQueue, &distance, 0);
     }
     vTaskDelay(1000 / portTICK_PERIOD_MS);
@@ -194,10 +196,8 @@ void Display_Task()
               data_received.temperature,
               data_received.humidity,
               distance);
-#if DEBUG_JSON
-      printf("%s\n", json_str);
-#endif
       // ? Mengirim data ke UART
+      printf("%s\n", json_str);
       uart_write_bytes(UART_NUM_2, json_str, sizeof(json_str));
     }
   }
@@ -210,7 +210,7 @@ void Servo_Task()
   while (1)
   {
     // ? Mencoba mengambil mutex
-    if(xSemaphoreTake(button_mutex, portMAX_DELAY) == pdTRUE)
+    if (xSemaphoreTake(button_mutex, portMAX_DELAY) == pdTRUE)
     {
       // ? Menggerakkan servo sesuai dengan state button
       if (button_state)
@@ -247,9 +247,9 @@ void PushButton_Task()
           // ? Button state akan berubah jika button ditekan
           button_state = !button_state;
           xSemaphoreGive(button_mutex);
-          #if DEBUG_FLAG
+#if DEBUG_FLAG
           printf("Button state: %d\n", button_state);
-          #endif
+#endif
           // ? Update waktu terakhir button ditekan
           last_button_press_time = current_time;
         }
@@ -276,10 +276,11 @@ void app_main(void)
   ssd1306_dev = ssd1306_create(I2C_MASTER_NUM, SSD1306_I2C_ADDRESS);
   ssd1306_refresh_gram(ssd1306_dev);
   ssd1306_clear_screen(ssd1306_dev, 0x00);
-  char data_str[10] = {0};
-  sprintf(data_str, "ZAKI");
-  ssd1306_draw_string(ssd1306_dev, 0, 0, (const uint8_t *)data_str, 16, 1);
+  char nama_str[20] = {0};
+  sprintf(nama_str, "AHMAD ZAKI A");
+  ssd1306_draw_string(ssd1306_dev, 0, 0, (const uint8_t *)nama_str, 16, 1);
   ssd1306_refresh_gram(ssd1306_dev);
+  vTaskDelay(2000 / portTICK_PERIOD_MS);
 
   // ? Inisialisasi Queue
   dhtQueue = xQueueCreate(10, sizeof(char[10]));
@@ -307,10 +308,9 @@ void app_main(void)
   gpio_config_t button_config = {
       .pin_bit_mask = (1ULL << BUTTON_GPIO),
       .mode = GPIO_MODE_INPUT,
-      .pull_up_en = GPIO_PULLUP_ENABLE,     // ? Menyalakan internal pull up resistor
+      .pull_up_en = GPIO_PULLUP_ENABLE, // ? Menyalakan internal pull up resistor
       .pull_down_en = GPIO_PULLDOWN_DISABLE,
-      .intr_type = GPIO_INTR_DISABLE
-  };
+      .intr_type = GPIO_INTR_DISABLE};
   gpio_config(&button_config);
 
   // ? Membuat task untuk membaca sensor DHT11
