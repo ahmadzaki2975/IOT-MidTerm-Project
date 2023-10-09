@@ -3,6 +3,9 @@ Ahmad Zaki Akmal - 21/480179/TK/52981
 
 This project is made to fulfill the mid term of Embedded Systems and IoT Class of 2023/2024
 
+## Flowchart of the System
+![Flowchart of the system](https://raw.githubusercontent.com/ahmadzaki2975/IOT-MidTerm-Project/main/assets/Flowchart_480179.jpg)
+
 ## System Description
 This system fulfills the following requirements of the Mid-Term Project.
 
@@ -34,6 +37,3 @@ And has 5 RTOS tasks
 - **Display_Task()**, to display data acquired from DHT11 sensor and ultrasonic sensor to the OLED and send them via the serial port.
 - **Servo_Task()**, to rotate the servo based on a state toggled by the push button.
 - **PushButton_Task()**, to toggle the state that controls the servo motor.
-
-## Flowchart of the System
-![Flowchart of the system](https://raw.githubusercontent.com/ahmadzaki2975/IOT-MidTerm-Project/main/assets/Flowchart_480179.jpg)
